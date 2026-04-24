@@ -1,0 +1,315 @@
+{
+  "name": "Projeto Planilha IA",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1024,
+        -96
+      ],
+      "id": "830037a5-81a8-4a1b-94aa-946aafd63612",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/10IkUwFJg4o5xOEBABEKO5JCJl3hMQhLSCyAyNl8PDqk/edit?gid=165134601#gid=165134601",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Planilha1",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -816,
+        -96
+      ],
+      "id": "263a5d93-9e92-4902-9f89-e35bc7c8f3a4",
+      "name": "Buscar Dados da Planilha",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "NRZcs3quOWrdiwWM",
+          "name": "Google Sheets account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let categoriaAtual = \"\";\nconst itensTratados = [];\n\nfunction limpar(texto) {\n  return String(texto || \"\")\n    .replace(/\\s+/g, \" \")\n    .trim();\n}\n\nfunction detectarCategoria(texto) {\n  const t = limpar(texto)\n    .toLowerCase()\n    .normalize(\"NFD\")\n    .replace(/[\\u0300-\\u036f]/g, \"\");\n\n  if (t.includes(\"materiais de consumo\")) return \"materiais_consumo\";\n  if (t.includes(\"material de consumo\")) return \"materiais_consumo\";\n\n  if (t.includes(\"materiais permanentes\")) return \"materiais_permanentes\";\n  if (t.includes(\"material permanente\")) return \"materiais_permanentes\";\n  if (t.includes(\"materiais permamentes\")) return \"materiais_permanentes\";\n  if (t.includes(\"material permamente\")) return \"materiais_permanentes\";\n\n  if (t.includes(\"recursos humanos\")) return \"recursos_humanos\";\n  if (t.includes(\"recurso humano\")) return \"recursos_humanos\";\n\n  return \"\";\n}\n\nfor (const item of items) {\n  const row = item.json;\n\n  // acha automaticamente a coluna principal onde está a descrição/item/categoria\n  const chaveDescricao = Object.keys(row).find((k) => {\n    const key = String(k || \"\").toLowerCase();\n    return key.includes(\"planilha\") || key.includes(\"orçament\") || key.includes(\"orcament\");\n  });\n\n  const textoBase = limpar(chaveDescricao ? row[chaveDescricao] : \"\");\n  const justificativa = limpar(row.col_7 || \"\");\n  const unidade_medida = limpar(row.col_8 || \"\");\n  const valor_unitario = limpar(row.col_9 || \"\");\n  const quantidade = limpar(row.col_10 || \"\");\n  const valor_total = limpar(row.col_11 || \"\");\n  const referencia_preco = limpar(row.col_12 || \"\");\n\n  if (!textoBase) continue;\n\n  const textoLower = textoBase.toLowerCase();\n\n  // ignora cabeçalhos\n  if (textoLower === \"descrição do item\") continue;\n  if (textoLower.includes(\"planilha orçamentária\")) continue;\n  if (textoLower.includes(\"total materiais\")) continue;\n  if (textoLower === \"total\") continue;\n\n  // detecta categorias\n  const categoriaDetectada = detectarCategoria(textoBase);\n  if (categoriaDetectada) {\n    categoriaAtual = categoriaDetectada;\n    continue;\n  }\n\n  // aceita formatos como:\n  // 1.1 Caderno...\n  // 1.1. Caderno...\n  // 2.3 Microfone...\n  const matchItem = textoBase.match(/^(\\d+\\.\\d+)\\.?\\s*(.+)$/);\n\n  if (!matchItem) continue;\n\n  const numero_item = limpar(matchItem[1]);\n  const descricao = limpar(matchItem[2]);\n\n  itensTratados.push({\n    json: {\n      categoria: categoriaAtual,\n      item: numero_item,\n      descricao,\n      justificativa,\n      unidade_medida,\n      valor_unitario,\n      quantidade,\n      valor_total,\n      referencia_preco\n    }\n  });\n}\n\nreturn itensTratados;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -608,
+        -96
+      ],
+      "id": "6bfa9324-6574-4da6-9125-aa137233d35a",
+      "name": "Tratar e Estruturar Itens"
+    },
+    {
+      "parameters": {
+        "jsCode": "const itens = items.map(item => item.json);\n\nreturn [\n  {\n    json: {\n      itens\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        -96
+      ],
+      "id": "f15ca989-0015-4b73-8f57-cb49c0aae04b",
+      "name": "Consolidar Itens da Planilha"
+    },
+    {
+      "parameters": {
+        "jsCode": "const itens = $json.itens || [];\n\nconst itensTexto = itens.map((item, index) => {\n  return [\n    `Item ${index + 1}`,\n    `Categoria original da planilha: ${item.categoria || \"\"}`,\n    `Descrição: ${item.descricao || \"\"}`,\n    `Justificativa/Finalidade: ${item.justificativa || \"\"}`,\n    `Unidade de medida: ${item.unidade_medida || \"\"}`,\n    `Valor unitário: ${item.valor_unitario || \"\"}`,\n    `Quantidade: ${item.quantidade || \"\"}`,\n    `Valor total: ${item.valor_total || \"\"}`,\n    `Referência de preço: ${item.referencia_preco || \"\"}`\n  ].join(\"\\n\");\n}).join(\"\\n\\n----------------------\\n\\n\");\n\nconst prompt = `\nGere um plano de trabalho completo com base EXCLUSIVAMENTE nos dados da planilha orçamentária abaixo.\n\nRETORNE APENAS JSON VÁLIDO, sem markdown, sem explicações extras e sem texto fora do JSON.\n\nFORMATO EXATO:\n{\n  \"titulo_projeto\": \"string\",\n  \"descricao_projeto\": \"string\",\n  \"objetivo_geral\": \"string\",\n  \"objetivos_especificos\": [\"string\"],\n  \"justificativa\": \"string\",\n  \"metodologia\": \"string\",\n  \"publico_direto\": \"string\",\n  \"publico_indireto\": \"string\"\n}\n\nREGRAS GERAIS:\n1. Trabalhe exclusivamente com os dados fornecidos.\n2. Não invente itens, valores, datas, cronogramas, metas, público-alvo ou histórico do proponente.\n3. Não use markdown, negrito, asteriscos ou formatação especial.\n4. Não use a expressão \"este projeto visa\".\n5. A escrita deve ser técnica, clara, objetiva, profissional e natural.\n6. O texto deve parecer um plano de trabalho real.\n\nCAMPOS:\n- titulo_projeto: curto, profissional e coerente com os itens.\n- descricao_projeto: explicar de forma geral o que será realizado e quais estruturas sustentam a execução.\n- objetivo_geral: texto único, técnico e coerente com a execução.\n- objetivos_especificos: array de strings, cada objetivo iniciado por verbo no infinitivo.\n- justificativa: conectar necessidade, execução e uso dos recursos, sem criar dados externos.\n- publico_direto e publico_indireto: preencher somente se houver base clara nos dados; caso contrário, retornar string vazia.\n\nMETODOLOGIA — REGRA PRINCIPAL:\nA metodologia NÃO deve copiar a planilha item por item.\n\nA metodologia deve transformar os itens da planilha em GRUPOS DE EXECUÇÃO com verbos no infinitivo, explicando COMO as ações serão realizadas na prática.\n\nA metodologia deve:\n1. Começar com uma contextualização geral curta.\n2. Criar no máximo 5 grupos estratégicos.\n3. Usar numeração 2.5, 2.5.1, 2.5.2 etc.\n4. Explicar a execução de cada grupo em texto corrido.\n5. Citar os tipos de recursos de forma agrupada, sem listar todos os nomes exatos dos itens.\n6. Manter conexão com a planilha, mas sem transformar a metodologia em uma lista de compras.\n7. Explicar a função prática dos recursos dentro da execução do projeto.\n8. Não criar informações que não estejam sustentadas pelos dados.\n\nFORMATO DA METODOLOGIA:\n2.5 METODOLOGIA:\n[Contextualização geral curta]\n\n2.5.1 [Verbo no infinitivo + ação estratégica]\n[Texto explicando como esse grupo de ação será executado, usando os recursos correspondentes da planilha de forma agrupada.]\n\n2.5.2 [Verbo no infinitivo + ação estratégica]\n[Texto explicando como esse grupo de ação será executado.]\n\n2.5.3 [Verbo no infinitivo + ação estratégica]\n[Texto explicando como esse grupo de ação será executado.]\n\nE assim sucessivamente, até no máximo 5 grupos.\n\nREGRAS DE AGRUPAMENTO:\n- Materiais de consumo e itens de apoio: agrupar como apoio às atividades.\n- Instrumentos musicais: agrupar como prática musical ou instrumentalização das atividades.\n- Equipamentos de som, imagem, informática, impressora, notebook, projetor, tela, quadro e similares: agrupar como estrutura operacional.\n- Profissionais, assessorias e serviços: agrupar como execução técnica, administrativa e conformidade.\n- Banners, camisetas, marketing e materiais de divulgação: agrupar como comunicação e identificação das ações.\n\nIMPORTANTE:\n- Não liste cada item individualmente.\n- Não use subtópicos 2.5.1.1, 2.5.1.2, 2.5.1.3.\n- Não copie nomes exatos de produtos, salvo se for indispensável.\n- Não escreva metodologia como inventário.\n- Escreva como plano de execução.\n\nITENS DA PLANILHA:\n${itensTexto}\n`.trim();\n\nreturn [\n  {\n    json: {\n      ...$json,\n      prompt_completo: prompt\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        -96
+      ],
+      "id": "d4846bbf-31e0-4042-99e4-82bff280318f",
+      "name": "Gerar Prompt do Projeto"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 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"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "HTTP-Referer",
+              "value": "https://n8n.io/"
+            },
+            {}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"openai/gpt-4o-mini\",\n  \"temperature\": 0.2,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Você é um especialista em elaboração de planos de trabalho para projetos com recurso público no Brasil. Sua escrita deve ser técnica, clara, objetiva, profissional e natural. Trabalhe exclusivamente com os dados fornecidos. Não invente informações. Não crie números, datas, público-alvo, metas, cronogramas, resultados, entregas ou documentos que não estejam claramente sustentados nos dados. Evite linguagem genérica, evite repetição e não use a expressão 'este projeto visa'. Sempre responda em JSON válido, sem markdown, sem explicações extras e sem texto fora do JSON.\\n\\nREGRA CRÍTICA SOBRE METODOLOGIA:\\nA metodologia deve ser detalhada, explicativa e operacional, mas NÃO deve listar cada item individualmente.\\n\\nA metodologia deve transformar os itens da planilha em grupos de execução com verbos no infinitivo, explicando como as ações serão realizadas na prática.\\n\\nA metodologia deve seguir estrutura numérica:\\n2.5 METODOLOGIA\\n2.5.1 [grupo com verbo no infinitivo]\\n2.5.2 [grupo com verbo no infinitivo]\\n2.5.3 [grupo com verbo no infinitivo]\\n\\nÉ permitido citar tipos de recursos, materiais, equipamentos, instrumentos, profissionais e serviços da planilha de forma agrupada, explicando sua função na execução do projeto.\\n\\nÉ proibido listar todos os itens da planilha como subtópicos 2.5.1.1, 2.5.1.2, 2.5.1.3.\\n\\nÉ proibido transformar a metodologia em inventário, lista de compras ou descrição individual de produtos.\\n\\nNÃO utilize estrutura por eixos.\\nNÃO utilize 'Eixo 1', 'Eixo 2' ou qualquer variação.\\n\\nA resposta deve manter conexão com a planilha, mas escrever a metodologia como plano de execução.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.prompt_completo) }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        16,
+        -96
+      ],
+      "id": "01b74690-fa3e-42da-af47-7a1ab39b6528",
+      "name": "Gerar Projeto com IA"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resposta = $json;\n\nlet content = '';\n\nif (resposta.choices?.[0]?.message?.content) {\n  content = resposta.choices[0].message.content;\n} else if (resposta.data?.choices?.[0]?.message?.content) {\n  content = resposta.data.choices[0].message.content;\n} else if (resposta.message?.content) {\n  content = resposta.message.content;\n} else {\n  throw new Error('A IA não retornou conteúdo no formato esperado.');\n}\n\nconst limpar = (txt) => {\n  return String(txt || '')\n    .replace(/^```json\\s*/i, '')\n    .replace(/^```\\s*/i, '')\n    .replace(/```$/i, '')\n    .trim();\n};\n\nconst limparTextoIA = (txt) => {\n  return String(txt || '')\n    .replace(/\\r/g, '')\n    .replace(/\\*\\*/g, '')\n    .replace(/[ \\t]+\\n/g, '\\n')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n};\n\nconst extrairJson = (txt) => {\n  const texto = limpar(txt);\n\n  try {\n    return JSON.parse(texto);\n  } catch (_) {}\n\n  const inicio = texto.indexOf('{');\n  const fim = texto.lastIndexOf('}');\n\n  if (inicio !== -1 && fim !== -1 && fim > inicio) {\n    return JSON.parse(texto.slice(inicio, fim + 1));\n  }\n\n  throw new Error('Não foi possível extrair um JSON válido da resposta.');\n};\n\nconst bruto = limpar(content);\n\nlet parsed;\nlet erroParse = '';\n\ntry {\n  parsed = extrairJson(bruto);\n} catch (error) {\n  erroParse = error.message || 'A resposta não veio em JSON válido';\n\n  parsed = {\n    titulo_projeto: '',\n    descricao_projeto: '',\n    objetivo_geral: '',\n    objetivos_especificos: [],\n    justificativa: '',\n    metodologia: '',\n    publico_direto: '',\n    publico_indireto: ''\n  };\n}\n\nconst textoSeguro = (valor) => limparTextoIA(valor);\n\nconst tituloProjeto = textoSeguro(parsed.titulo_projeto) || 'Projeto';\n\nconst descricaoProjeto =\n  textoSeguro(parsed.descricao_projeto) ||\n  'A proposta foi estruturada com base nos itens e finalidades previstos na planilha orçamentária, organizando tecnicamente os recursos necessários para a execução das atividades do projeto.';\n\nconst objetivoGeral =\n  textoSeguro(parsed.objetivo_geral) ||\n  'Estruturar e viabilizar a execução do projeto com base nos itens e finalidades previstos na planilha orçamentária.';\n\nconst justificativa =\n  textoSeguro(parsed.justificativa) ||\n  'A proposta se justifica pela necessidade de estruturar adequadamente os recursos materiais, técnicos e operacionais indispensáveis à execução do projeto.';\n\nlet objetivosArray = [];\n\nif (Array.isArray(parsed.objetivos_especificos)) {\n  objetivosArray = parsed.objetivos_especificos\n    .map(o => textoSeguro(o))\n    .filter(Boolean);\n} else {\n  objetivosArray = String(parsed.objetivos_especificos || '')\n    .split('\\n')\n    .map(o => textoSeguro(o).replace(/^[-•\\d\\.\\)\\s]+/, '').trim())\n    .filter(Boolean);\n}\n\nif (!objetivosArray.length) {\n  objetivosArray = [\n    'Estruturar os recursos necessários para a execução das atividades previstas',\n    'Organizar os insumos, equipamentos e materiais de apoio conforme as finalidades apresentadas',\n    'Garantir condições técnicas e operacionais adequadas para o desenvolvimento das ações do projeto'\n  ];\n}\n\nconst objetivosFormatados = objetivosArray.map(o => `• ${o}`).join('\\n');\n\nlet metodologia = textoSeguro(parsed.metodologia);\n\nif (!metodologia) {\n  metodologia = '2.5 METODOLOGIA:\\nA execução do projeto será organizada a partir dos grupos de ações definidos com base nos itens da planilha orçamentária, garantindo que os recursos previstos estejam vinculados a finalidades práticas de execução.';\n}\n\nmetodologia = metodologia\n  .replace(/\\*\\*/g, '')\n  .replace(/\\r/g, '')\n  .replace(/[ \\t]+\\n/g, '\\n')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nmetodologia = metodologia.replace(/^METODOLOGIA:\\s*/i, '2.5 METODOLOGIA:\\n');\n\nif (!/^2\\.5\\s+METODOLOGIA:?/i.test(metodologia)) {\n  metodologia = `2.5 METODOLOGIA:\\n${metodologia}`;\n}\n\nmetodologia = metodologia\n  .replace(/\\s+(2\\.5\\.\\d+\\s+)/g, '\\n\\n$1')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\n/* =========================\nVALIDAÇÕES DA METODOLOGIA\n========================= */\n\nconst metodologiaLower = metodologia.toLowerCase();\n\nconst temTituloMetodologia = /^2\\.5\\s+METODOLOGIA:?/i.test(metodologia);\nconst temGruposNumerados = /2\\.5\\.1/i.test(metodologia);\nconst usaSubitensDeProdutos = /2\\.5\\.\\d+\\.\\d+/i.test(metodologia);\n\nconst termosIndesejados = [\n  '2.5.1.1',\n  '2.5.1.2',\n  '2.5.1.3',\n  'eixo 1',\n  'eixo 2',\n  'eixo 3',\n  'item 1',\n  'item 2',\n  'item 3'\n];\n\nconst termosEncontrados = termosIndesejados.filter(t =>\n  metodologiaLower.includes(t.toLowerCase())\n);\n\nconst metodologiaForaPadrao =\n  !temTituloMetodologia ||\n  !temGruposNumerados ||\n  usaSubitensDeProdutos;\n\nconst metodologiaInvalida =\n  metodologiaForaPadrao ||\n  termosEncontrados.length > 0;\n\nconst publicoDireto = textoSeguro(parsed.publico_direto);\nconst publicoIndireto = textoSeguro(parsed.publico_indireto);\n\nreturn [\n  {\n    json: {\n      titulo_projeto: tituloProjeto,\n      descricao_projeto: descricaoProjeto,\n      objetivo_geral: objetivoGeral,\n      objetivos_especificos_array: objetivosArray,\n      objetivos_especificos: objetivosFormatados,\n      justificativa,\n      metodologia,\n      publico_direto: publicoDireto,\n      publico_indireto: publicoIndireto,\n\n      erro_parse: erroParse,\n\n      metodologia_fora_padrao: metodologiaForaPadrao,\n      metodologia_invalida: metodologiaInvalida,\n      usa_subitens_de_produtos: usaSubitensDeProdutos,\n      termos_indesejados_encontrados: termosEncontrados,\n\n      json_resposta: JSON.stringify(parsed),\n      resposta_bruta: bruto\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        -96
+      ],
+      "id": "55f1dbb0-36a5-47cf-8106-804a1cf3a4ba",
+      "name": "Interpretar Resposta da IA"
+    },
+    {
+      "parameters": {
+        "jsCode": "function formatarMoedaBR(valor) {\n  return new Intl.NumberFormat('pt-BR', {\n    style: 'currency',\n    currency: 'BRL'\n  }).format(Number(valor || 0));\n}\n\nfunction textoSeguro(valor) {\n  if (valor === null || valor === undefined) return '';\n  return String(valor).trim();\n}\n\nfunction limparTexto(txt) {\n  return textoSeguro(txt)\n    .replace(/\\r/g, '')\n    .replace(/\\*\\*/g, '')\n    .replace(/[ \\t]+\\n/g, '\\n')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim();\n}\n\nfunction numeroSeguroBR(valor) {\n  if (valor === null || valor === undefined || valor === '') return 0;\n\n  if (typeof valor === 'number') {\n    return isNaN(valor) ? 0 : valor;\n  }\n\n  let texto = String(valor).trim().replace(/R\\$\\s?/gi, '').trim();\n\n  if (texto.includes(',') && texto.includes('.')) {\n    texto = texto.replace(/\\./g, '').replace(',', '.');\n  } else if (texto.includes(',')) {\n    texto = texto.replace(',', '.');\n  }\n\n  texto = texto.replace(/[^\\d.-]/g, '');\n\n  const numero = Number(texto);\n  return isNaN(numero) ? 0 : numero;\n}\n\nfunction ehLinhaTotal(item) {\n  const texto = [\n    item.categoria,\n    item.item,\n    item.descricao,\n    item.justificativa,\n    item.valor_total,\n    item.referencia_preco\n  ].map(v => String(v || '').toUpperCase()).join(' ');\n\n  return (\n    texto.includes('TOTAL GERAL') ||\n    texto.includes('SUBTOTAL') ||\n    texto.includes('TOTAL MATERIAIS') ||\n    texto.includes('TOTAL RECURSOS') ||\n    texto.includes('TOTAL EQUIPAMENTOS') ||\n    texto.startsWith('TOTAL ')\n  );\n}\n\nconst dadosEntrada = $json;\n\nconst titulo_projeto = limparTexto(dadosEntrada.titulo_projeto) || 'Projeto';\n\nconst descricao_projeto =\n  limparTexto(dadosEntrada.descricao_projeto) ||\n  'A proposta foi estruturada com base nos itens e finalidades previstos na planilha orçamentária, organizando tecnicamente os recursos necessários para a execução das atividades do projeto.';\n\nconst objetivo_geral =\n  limparTexto(dadosEntrada.objetivo_geral) ||\n  'Estruturar e viabilizar a execução do projeto com base nos itens e finalidades previstos na planilha orçamentária.';\n\nconst justificativa =\n  limparTexto(dadosEntrada.justificativa) ||\n  'A proposta se justifica pela necessidade de estruturar adequadamente os recursos materiais, técnicos e operacionais indispensáveis à execução do projeto.';\n\nlet metodologia =\n  limparTexto(dadosEntrada.metodologia) ||\n  '2.5 METODOLOGIA:\\nA execução do projeto será organizada a partir dos grupos de ações definidos com base nos itens da planilha orçamentária.';\n\n/* =========================\nPADRONIZAÇÃO DA METODOLOGIA\n========================= */\n\nmetodologia = metodologia\n  .replace(/Eixo\\s+(\\d+)\\s*[—-]\\s*/gi, '2.5.$1 ')\n  .replace(/^METODOLOGIA:\\s*/i, '2.5 METODOLOGIA:\\n')\n  .trim();\n\nif (!/^2\\.5\\s+METODOLOGIA:?/i.test(metodologia)) {\n  metodologia = `2.5 METODOLOGIA:\\n${metodologia}`;\n}\n\n// 🔥 IMPORTANTE: NÃO formatar subitens tipo 2.5.1.1\nmetodologia = metodologia\n  .replace(/\\s+(2\\.5\\.\\d+\\s+)/g, '\\n\\n$1')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\n/* =========================\nOBJETIVOS ESPECÍFICOS\n========================= */\n\nlet objetivosArray = [];\n\nif (Array.isArray(dadosEntrada.objetivos_especificos_array)) {\n  objetivosArray = dadosEntrada.objetivos_especificos_array\n    .map(item => limparTexto(item))\n    .filter(Boolean);\n} else if (Array.isArray(dadosEntrada.objetivos_especificos)) {\n  objetivosArray = dadosEntrada.objetivos_especificos\n    .map(item => limparTexto(item))\n    .filter(Boolean);\n} else if (typeof dadosEntrada.objetivos_especificos === 'string') {\n  objetivosArray = dadosEntrada.objetivos_especificos\n    .split('\\n')\n    .map(item => limparTexto(item).replace(/^[-•\\d.\\)\\s]+/, '').trim())\n    .filter(Boolean);\n}\n\nif (!objetivosArray.length) {\n  objetivosArray = [\n    'Estruturar os recursos necessários para execução do projeto',\n    'Organizar os insumos, equipamentos e materiais previstos',\n    'Garantir condições técnicas e operacionais adequadas para o desenvolvimento das ações'\n  ];\n}\n\nconst objetivos_especificos = objetivosArray\n  .map((obj, i) => {\n    const texto = obj.replace(/^Objetivo Específico\\s*\\d+\\s*[—-]\\s*/i, '').trim();\n    return `Objetivo Específico ${i + 1} — ${texto}`;\n  })\n  .join('\\n');\n\n/* =========================\nCÁLCULO VALOR GLOBAL\n========================= */\n\nlet itens = [];\n\ntry {\n  const dadosAgrupados = $('Consolidar Itens da Planilha').first().json;\n  itens = Array.isArray(dadosAgrupados.itens) ? dadosAgrupados.itens : [];\n} catch (e) {\n  itens = [];\n}\n\nlet total = 0;\nconst itensSomados = [];\nconst itensIgnorados = [];\n\nfor (const item of itens) {\n  if (ehLinhaTotal(item)) {\n    itensIgnorados.push({\n      motivo: 'Linha de total/subtotal ignorada',\n      item: item.item || '',\n      descricao: item.descricao || '',\n      valor_total: item.valor_total || ''\n    });\n    continue;\n  }\n\n  const valor = numeroSeguroBR(item.valor_total);\n\n  if (valor > 0) {\n    total += valor;\n    itensSomados.push({\n      item: item.item || '',\n      descricao: item.descricao || '',\n      valor_total_original: item.valor_total || '',\n      valor_convertido: valor\n    });\n  } else {\n    itensIgnorados.push({\n      motivo: 'Valor total vazio ou inválido',\n      item: item.item || '',\n      descricao: item.descricao || '',\n      valor_total: item.valor_total || ''\n    });\n  }\n}\n\ntotal = Math.round(total * 100) / 100;\n\nconst valor_global = formatarMoedaBR(total);\nconst valor_global_numero = total;\n\n/* =========================\nHISTÓRICO DO PROPONENTE\n========================= */\n\nlet historico_proponente = '';\n\ntry {\n  const linha = $('Buscar Dados da Planilha').first().json;\n\n  historico_proponente = limparTexto(\n    linha.historico_proponente ??\n    linha['HISTÓRICO DO PROPONENTE'] ??\n    linha['HISTORICO DO PROPONENTE'] ??\n    linha['historico do proponente']\n  );\n} catch (e) {\n  historico_proponente = '';\n}\n\n/* =========================\nPÚBLICO\n========================= */\n\nlet publico_direto = limparTexto(dadosEntrada.publico_direto);\nlet publico_indireto = limparTexto(dadosEntrada.publico_indireto);\n\ntry {\n  const linha = $('Buscar Dados da Planilha').first().json;\n\n  if (!publico_direto) {\n    publico_direto = limparTexto(\n      linha.publico_direto ??\n      linha['PÚBLICO DIRETO'] ??\n      linha['PUBLICO DIRETO'] ??\n      linha['publico direto']\n    );\n  }\n\n  if (!publico_indireto) {\n    publico_indireto = limparTexto(\n      linha.publico_indireto ??\n      linha['PÚBLICO INDIRETO'] ??\n      linha['PUBLICO INDIRETO'] ??\n      linha['publico indireto']\n    );\n  }\n} catch (e) {}\n\n/* =========================\nRETORNO FINAL\n========================= */\n\nreturn [\n  {\n    json: {\n      ...dadosEntrada,\n      titulo_projeto,\n      descricao_projeto,\n      objetivo_geral,\n      objetivos_especificos,\n      objetivos_especificos_array: objetivosArray,\n      justificativa,\n      metodologia,\n      historico_proponente,\n      valor_global,\n      valor_global_numero,\n      publico_direto,\n      publico_indireto,\n      itens_somados_valor_global: itensSomados,\n      itens_ignorados_valor_global: itensIgnorados,\n\n      // 🔥 NOVO PADRÃO\n      metodologia_fora_padrao: dadosEntrada.metodologia_fora_padrao || false,\n      metodologia_invalida: dadosEntrada.metodologia_invalida || false,\n      usa_subitens_de_produtos: dadosEntrada.usa_subitens_de_produtos || false,\n      termos_indesejados_encontrados: dadosEntrada.termos_indesejados_encontrados || []\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -96
+      ],
+      "id": "5f448f9b-647d-4426-ad0c-7e858c965b05",
+      "name": "Preparar Dados para Documento"
+    },
+    {
+      "parameters": {
+        "operation": "copy",
+        "fileId": {
+          "__rl": true,
+          "value": "1aNjvmCPUCOf5xEEpcedOijfuOkSFLctNieBG5_XbbW0",
+          "mode": "id"
+        },
+        "name": "=Plano de Trabalho - {{$json.titulo_projeto}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        640,
+        -96
+      ],
+      "id": "7e292f13-ba88-4bca-8938-5b4b0addafb1",
+      "name": "Criar Documento no Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "FVtkY4qT36pPtypF",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://docs.googleapis.com/v1/documents/{{$node[\"Criar Documento no Drive\"].json[\"id\"]}}:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleOAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({\n  requests: [\n    {\n      replaceAllText: {\n        containsText: { text: \"__TITULO_PROJETO__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"titulo_projeto\"] || \"SEM TITULO\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__DESCRICAO_PROJETO__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"descricao_projeto\"] || \"SEM DESCRICAO\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__JUSTIFICATIVA__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"justificativa\"] || \"SEM JUSTIFICATIVA\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__OBJETIVO_GERAL__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"objetivo_geral\"] || \"SEM OBJETIVO GERAL\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__OBJETIVOS_ESPECIFICOS__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"objetivos_especificos\"] || \"SEM OBJETIVOS ESPECIFICOS\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__METODOLOGIA__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"metodologia\"] || \"SEM METODOLOGIA\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__VALOR_GLOBAL__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"valor_global\"] || \"SEM VALOR\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__HISTORICO_PROPONENTE__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"historico_proponente\"] || \"SEM HISTORICO\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__PUBLICO_DIRETO__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"publico_direto\"] || \"\").trim()\n      }\n    },\n    {\n      replaceAllText: {\n        containsText: { text: \"__PUBLICO_INDIRETO__\", matchCase: false },\n        replaceText: String($node[\"Preparar Dados para Documento\"].json[\"publico_indireto\"] || \"\").trim()\n      }\n    }\n  ]\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        848,
+        -96
+      ],
+      "id": "4bac9ef9-7a6a-48dd-9baa-c687146077bf",
+      "name": "Preencher Documento (Google Docs)",
+      "credentials": {
+        "googleOAuth2Api": {
+          "id": "t53gF7y80na40USF",
+          "name": "Google account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Buscar Dados da Planilha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Dados da Planilha": {
+      "main": [
+        [
+          {
+            "node": "Tratar e Estruturar Itens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tratar e Estruturar Itens": {
+      "main": [
+        [
+          {
+            "node": "Consolidar Itens da Planilha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidar Itens da Planilha": {
+      "main": [
+        [
+          {
+            "node": "Gerar Prompt do Projeto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Prompt do Projeto": {
+      "main": [
+        [
+          {
+            "node": "Gerar Projeto com IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar Projeto com IA": {
+      "main": [
+        [
+          {
+            "node": "Interpretar Resposta da IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar Resposta da IA": {
+      "main": [
+        [
+          {
+            "node": "Preparar Dados para Documento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Dados para Documento": {
+      "main": [
+        [
+          {
+            "node": "Criar Documento no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Documento no Drive": {
+      "main": [
+        [
+          {
+            "node": "Preencher Documento (Google Docs)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "200be717-2595-4540-a823-4cdd8f27e710",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b12d9d4d5de59846e106403037f22dd04d194d30ae4ba4e65accf8ab043aab41"
+  },
+  "id": "PjSZ5fAhAe9Sqvn3",
+  "tags": []
+}
