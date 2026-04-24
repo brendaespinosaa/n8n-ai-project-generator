@@ -52,4 +52,4 @@ Portfolio project — production-ready logic, demo environment.
 
 ## Author
 
-Brenda Espinosa
+Created by Brenda Espinosa
